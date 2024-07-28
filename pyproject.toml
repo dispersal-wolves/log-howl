@@ -1,0 +1,17 @@
+[project]
+name = "dispersal-log-howl"
+version = "0.1.0"
+description = "Small local log watcher and alert router"
+requires-python = ">=3.11"
+license = "MIT"
+
+[project.scripts]
+log-howl = "log_howl:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["log_howl"]
+package-dir = {"" = "src"}

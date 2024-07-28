@@ -1,0 +1,8 @@
+{
+  "files": ["/var/log/auth.log"],
+  "suppress_seconds": 60,
+  "rules": [
+    {"name": "failed-login", "severity": "warning", "pattern": "failed password|authentication failure"},
+    {"name": "new-session", "severity": "notice", "pattern": "session opened"}
+  ]
+}
