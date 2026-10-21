@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from log_howl import Rule, Suppressor, main, match_line, redact_line
+from log_howl import Rule, Suppressor, TailState, main, match_line, read_complete_lines, redact_line
 
 
 class LogHowlTests(unittest.TestCase):
@@ -36,6 +36,27 @@ class LogHowlTests(unittest.TestCase):
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 self.assertEqual(main(["watch", "--config", str(config)]), 2)
             self.assertIn("HTTPS", err.getvalue())
+
+    def test_tail_waits_for_complete_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp, "app.log")
+            log.write_bytes(b"")
+            state = TailState.at_end(log)
+            with log.open("ab") as handle:
+                handle.write(b"first\nsec")
+            self.assertEqual(read_complete_lines(log, state), ["first"])
+            with log.open("ab") as handle:
+                handle.write(b"ond\n")
+            self.assertEqual(read_complete_lines(log, state), ["second"])
+
+    def test_tail_restarts_on_replaced_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp, "app.log")
+            log.write_bytes(b"old line\n")
+            state = TailState.at_end(log)
+            log.rename(Path(tmp, "app.log.1"))
+            log.write_bytes(b"new file grew past the old offset\n")
+            self.assertEqual(read_complete_lines(log, state), ["new file grew past the old offset"])
 
     def test_suppresses_within_window(self):
         suppressor = Suppressor(60)

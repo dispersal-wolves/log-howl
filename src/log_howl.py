@@ -95,6 +95,34 @@ def scan_file(path: Path, rules: list[Rule], suppressor: Suppressor, webhook: st
     return emitted
 
 
+@dataclass
+class TailState:
+    position: int = 0
+    identity: tuple[int, int] | None = None
+
+    @classmethod
+    def at_end(cls, path: Path) -> TailState:
+        if not path.exists():
+            return cls()
+        stat = path.stat()
+        return cls(stat.st_size, (stat.st_dev, stat.st_ino))
+
+
+def read_complete_lines(path: Path, state: TailState) -> list[str]:
+    """Return lines appended since the last read, leaving any unterminated tail for later."""
+    stat = path.stat()
+    identity = (stat.st_dev, stat.st_ino)
+    if identity != state.identity or stat.st_size < state.position:  # rotation or truncation
+        state.position = 0
+        state.identity = identity
+    with path.open("rb") as handle:
+        handle.seek(state.position)
+        data = handle.read()
+    complete = data[:data.rfind(b"\n") + 1]
+    state.position += len(complete)
+    return complete.decode("utf-8", errors="replace").splitlines()
+
+
 def command_scan(args: argparse.Namespace) -> int:
     try:
         files, rules, webhook, window = load_config(args.config)
@@ -116,27 +144,21 @@ def command_watch(args: argparse.Namespace) -> int:
         print(f"Log Howl: {exc}", file=sys.stderr)
         return 2
     suppressor = Suppressor(window)
-    positions = {path: path.stat().st_size if path.exists() else 0 for path in files}
+    states = {path: TailState.at_end(path) for path in files}
     print(f"Watching {len(files)} log file(s); press Ctrl+C to stop.")
     try:
         while True:
             for path in files:
                 if not path.exists():
-                    positions[path] = 0
+                    states[path] = TailState()
                     continue
-                size = path.stat().st_size
-                if size < positions[path]:  # rotation or truncation
-                    positions[path] = 0
-                with path.open("r", encoding="utf-8", errors="replace") as handle:
-                    handle.seek(positions[path])
-                    for line in handle:
-                        for event in match_line(path, line, rules):
-                            if suppressor.permits(f"{event['rule']}:{event['message']}"):
-                                try:
-                                    deliver(event, webhook, args.allow_http)
-                                except Exception as exc:
-                                    print(f"Delivery failed: {exc}", file=sys.stderr)
-                    positions[path] = handle.tell()
+                for line in read_complete_lines(path, states[path]):
+                    for event in match_line(path, line, rules):
+                        if suppressor.permits(f"{event['rule']}:{event['message']}"):
+                            try:
+                                deliver(event, webhook, args.allow_http)
+                            except Exception as exc:
+                                print(f"Delivery failed: {exc}", file=sys.stderr)
             time.sleep(args.interval)
     except KeyboardInterrupt:
         return 0
