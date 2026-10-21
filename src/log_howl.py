@@ -67,12 +67,16 @@ def match_line(path: Path, line: str, rules: list[Rule]) -> list[dict[str, str]]
     return events
 
 
+def validate_webhook(webhook: str | None, allow_http: bool) -> None:
+    if webhook and not webhook.startswith("https://") and not (allow_http and webhook.startswith("http://")):
+        raise ValueError("webhook must use HTTPS unless --allow-http is set")
+
+
 def deliver(event: dict[str, str], webhook: str | None, allow_http: bool) -> None:
     print(json.dumps(event), flush=True)
     if not webhook:
         return
-    if not webhook.startswith("https://") and not (allow_http and webhook.startswith("http://")):
-        raise ValueError("webhook must use HTTPS unless --allow-http is set")
+    validate_webhook(webhook, allow_http)
     request = urllib.request.Request(webhook, data=json.dumps(event).encode(), headers={"Content-Type": "application/json", "User-Agent": "dispersal-log-howl/0.1"}, method="POST")
     with urllib.request.urlopen(request, timeout=5) as response:
         if response.status >= 400:
@@ -94,6 +98,7 @@ def scan_file(path: Path, rules: list[Rule], suppressor: Suppressor, webhook: st
 def command_scan(args: argparse.Namespace) -> int:
     try:
         files, rules, webhook, window = load_config(args.config)
+        validate_webhook(webhook, args.allow_http)
         suppressor = Suppressor(window)
         count = sum(scan_file(path, rules, suppressor, webhook, args.allow_http) for path in files)
         print(json.dumps({"summary": {"alerts": count}}))
@@ -106,6 +111,7 @@ def command_scan(args: argparse.Namespace) -> int:
 def command_watch(args: argparse.Namespace) -> int:
     try:
         files, rules, webhook, window = load_config(args.config)
+        validate_webhook(webhook, args.allow_http)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"Log Howl: {exc}", file=sys.stderr)
         return 2
