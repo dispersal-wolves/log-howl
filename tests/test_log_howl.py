@@ -12,6 +12,13 @@ class LogHowlTests(unittest.TestCase):
         self.assertEqual(events[0]["rule"], "failed-login")
         self.assertNotIn("secret-value", events[0]["message"])
 
+    def test_redacts_authorization_scheme_values(self):
+        for line in ("Authorization: Bearer abc123", "authorization=Basic dXNlcjpwYXNz"):
+            redacted = redact_line(line)
+            self.assertIn("[REDACTED]", redacted)
+            self.assertNotIn("abc123", redacted)
+            self.assertNotIn("dXNlcjpwYXNz", redacted)
+
     def test_suppresses_within_window(self):
         suppressor = Suppressor(60)
         self.assertTrue(suppressor.permits("x", now=1))

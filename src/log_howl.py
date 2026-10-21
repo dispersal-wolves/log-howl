@@ -48,7 +48,7 @@ def load_config(path: Path) -> tuple[list[Path], list[Rule], str | None, float]:
 
 
 def redact_line(line: str) -> str:
-    line = re.sub(r"(?i)(password|token|secret|authorization)\s*[=:]\s*\S+", r"\1=[REDACTED]", line)
+    line = re.sub(r"(?i)(password|token|secret|authorization)\s*[=:]\s*(?:(?:bearer|basic)\s+)?\S+", r"\1=[REDACTED]", line)
     return line[:2048]
 
 
