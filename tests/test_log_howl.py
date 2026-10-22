@@ -1,8 +1,12 @@
+import contextlib
+import io
+import json
 import re
+import tempfile
 import unittest
 from pathlib import Path
 
-from log_howl import Rule, Suppressor, match_line, redact_line
+from log_howl import Rule, Suppressor, main, match_line, redact_line
 
 
 class LogHowlTests(unittest.TestCase):
@@ -18,6 +22,20 @@ class LogHowlTests(unittest.TestCase):
             self.assertIn("[REDACTED]", redacted)
             self.assertNotIn("abc123", redacted)
             self.assertNotIn("dXNlcjpwYXNz", redacted)
+
+    def test_rejects_plain_http_webhook_at_startup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp, "app.log")
+            log.write_text("", encoding="utf-8")
+            config = Path(tmp, "rules.json")
+            config.write_text(json.dumps({
+                "files": [str(log)],
+                "webhook": "http://example.invalid/hook",
+                "rules": [{"name": "any", "pattern": "x"}],
+            }), encoding="utf-8")
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(main(["watch", "--config", str(config)]), 2)
+            self.assertIn("HTTPS", err.getvalue())
 
     def test_suppresses_within_window(self):
         suppressor = Suppressor(60)
